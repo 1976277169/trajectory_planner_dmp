@@ -43,6 +43,7 @@ CartesianGeneratorPosDMP::CartesianGeneratorPosDMP(string name) :
 	this->addPort("CartesianTwistDes", m_velocity_desi_port);
 	this->addPort("events", event_port);
         this->addPort("lastCommandOutport", last_command_outport);
+	this->ports()->addPort( "desiredStiffnessOutport",desired_stiffness_outport ).doc("desired stiffness output port");
 	//Adding Properties
 	this->addProperty("max_vel", m_gm_maximum_velocity).doc(
 			"Maximum Velocity in Trajectory");
@@ -64,7 +65,11 @@ CartesianGeneratorPosDMP::CartesianGeneratorPosDMP(string name) :
 	this->addOperation("resetPosition", &CartesianGeneratorPosDMP::resetPosition,
 			this, OwnThread).doc("Reset generator's position");
 	this->addOperation("resetPositionActual", &CartesianGeneratorPosDMP::resetPositionActual,
-			this, OwnThread).doc("Reset generator's position");		
+			this, OwnThread).doc("Reset generator's position");
+	this->addOperation("setCartesianStiffness", &CartesianGeneratorPosDMP::setCartesianStiffness,
+			this, OwnThread).doc("Set the stiffness to desired values");
+	this->addOperation("startKinesthetic", &CartesianGeneratorPosDMP::start_kinesthetic,
+			this, OwnThread).doc("Start kinesthetic guidance. mirror the actual pose in desired pose");
 
 }
 
@@ -72,7 +77,7 @@ CartesianGeneratorPosDMP::~CartesianGeneratorPosDMP() { }
 
 bool CartesianGeneratorPosDMP::configureHook()
 {
-// 	log(Info)<<"CartesianGeneratorPos::configureHook()"<<endlog();
+	log(Warning)<<"CartesianGeneratorPos::configureHook() DFGDGDFGDFGDFGDF "<<endlog();
 	TwistMsgToKDL(m_gm_maximum_velocity, m_maximum_velocity);
 	TwistMsgToKDL(m_gm_maximum_acceleration, m_maximum_acceleration);
 // 	log(Info)<<"CartesianGeneratorPos::configureHook()  m_gm_maximum_velocity "<<m_gm_maximum_velocity<<endlog();
@@ -113,6 +118,7 @@ bool CartesianGeneratorPosDMP::configureHook()
 	amp_x = amp_y = amp_z = 0;
 	omega_x = omega_y = omega_z = 0;
 	periodic_active = false;
+	kinestetic_active = false;
 	return true;
 
 }
@@ -274,6 +280,13 @@ void CartesianGeneratorPosDMP::updateHook()
 	  ///
 	  
 	}
+	else if(kinestetic_active)
+	{
+	  geometry_msgs::Pose pose;
+	  m_position_meas_port.read(pose);
+	  m_position_desi_port.write(pose);
+	  
+	}
 }
 
 void CartesianGeneratorPosDMP::stopHook() { }
@@ -383,9 +396,9 @@ bool CartesianGeneratorPosDMP::moveToDMP(geometry_msgs::Pose gm_pose, double tim
 bool CartesianGeneratorPosDMP::movePeriodic(KDL::Vector & amplitude_vector, float wx, float wy, float wz)
 {
   
-  amp_x = A;
-  amp_y = B;
-  amp_z = C;
+  amp_x = amplitude_vector.data[0];
+  amp_y = amplitude_vector.data[1];
+  amp_z = amplitude_vector.data[2];
   omega_x = wx;
   omega_y = wy;
   omega_z = wz;
@@ -450,6 +463,7 @@ void CartesianGeneratorPosDMP::resetPosition()
 
 	m_is_moving = false;
 	periodic_active = false;
+	kinestetic_active = false;
 }
 void CartesianGeneratorPosDMP::resetPositionActual()
 {
@@ -466,5 +480,43 @@ void CartesianGeneratorPosDMP::resetPositionActual()
 
 	m_is_moving = false;
 	periodic_active = false;
+	kinestetic_active = false;
+}
+void CartesianGeneratorPosDMP::setCartesianStiffness(float linear_stiffness, float angular_stiffness,float linear_damping, float angular_damping)
+{
+	log(Warning)<<"CartesianGeneratorPosDMP::setCartesianStiffness >> 1"<<endlog();
+	lwr_fri::CartesianImpedance desired_stiffness;
+	desired_stiffness.stiffness.linear.x = linear_stiffness;
+	desired_stiffness.stiffness.linear.y = linear_stiffness;
+	desired_stiffness.stiffness.linear.z = linear_stiffness;
+	log(Warning)<<"CartesianGeneratorPosDMP::setCartesianStiffness >> 2"<<endlog();
+	desired_stiffness.stiffness.angular.x = angular_stiffness;
+	desired_stiffness.stiffness.angular.y = angular_stiffness;
+	desired_stiffness.stiffness.angular.z = angular_stiffness;
+	log(Warning)<<"CartesianGeneratorPosDMP::setCartesianStiffness >> 3"<<endlog();
+	desired_stiffness.damping.linear.x = linear_damping;
+	desired_stiffness.damping.linear.y = linear_damping;
+	desired_stiffness.damping.linear.z = linear_damping;
+	log(Warning)<<"CartesianGeneratorPosDMP::setCartesianStiffness >> 4"<<endlog();
+	desired_stiffness.damping.angular.x = angular_damping;
+	desired_stiffness.damping.angular.y = angular_damping;
+	desired_stiffness.damping.angular.z = angular_damping;
+	
+	log(Warning)<<"CartesianGeneratorPosDMP::setCartesianStiffness >> setting the stiffness to "<<desired_stiffness<<endlog();
+	desired_stiffness_outport.write(desired_stiffness);
+}
+bool CartesianGeneratorPosDMP::start_kinesthetic()
+{
+  log(Warning)<<"CartesianGeneratorPos::start_kinesthetic >>  kinestetic guidance is activated "<<endlog();
+
+	if(!this->isRunning()){
+		log(Error)<<this->getName()<<" is not running yet."<<endlog();
+		return false;
+	}
+	periodic_active = false;
+	kinestetic_active = true;
+	m_is_moving = false;
+
+	return true;
 }
 } //namespace

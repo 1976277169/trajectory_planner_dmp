@@ -31,6 +31,7 @@
 #include <kdl/velocityprofile_trap.hpp>
 #include <kdl/kdl.hpp>
 #include <kdl/frames.hpp>
+#include <lwr_fri/typekit/Types.hpp>
 
 #include <string>
 #include "dmp.h"
@@ -66,8 +67,10 @@ namespace MotionControl
     private:
         bool moveToDMP(geometry_msgs::Pose pose, double time, double t_scale, double k_number, double k_width);
 	bool setWeight(std::vector<float> Wx,std::vector<float> Wy,std::vector<float> Wz);
-	bool movePeriodic(float A, float B, float C, float wx, float wy, float wz);
+	bool movePeriodic(KDL::Vector & amplitude_vector, float wx, float wy, float wz);
+	bool start_kinesthetic();
 	bool resetWeight(int kernel_number);
+	void setCartesianStiffness(float linear_stiffness, float angular_stiffness,float linear_damping, float angular_damping);
 	std::vector<float> Weight_x,Weight_y,Weight_z;
         void resetPosition();
 	void resetPositionActual();
@@ -79,7 +82,7 @@ namespace MotionControl
 	float x_dmp, y_dmp, z_dmp, theta_dmp, theta_eq;
 	KDL::Vector axis_eq;
 	float amp_x,amp_y, amp_z, omega_x, omega_y,omega_z;
-        bool periodic_active;
+        bool periodic_active,kinestetic_guidance;
 
       KDL::Frame m_traject_end, m_traject_begin;
       KDL::Frame m_position_desi_local;
@@ -113,6 +116,7 @@ namespace MotionControl
       RTT::OutputPort< geometry_msgs::Twist >  m_velocity_desi_port;
 
       RTT::OutputPort<std::string> event_port;
+      RTT::OutputPort<lwr_fri::CartesianImpedance> desired_stiffness_outport;
 
   }; // class
 } //namespace
