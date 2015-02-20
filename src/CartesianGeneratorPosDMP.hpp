@@ -31,6 +31,9 @@
 #include <kdl/velocityprofile_trap.hpp>
 #include <kdl/kdl.hpp>
 #include <kdl/frames.hpp>
+#include <kdl/jacobian.hpp>
+#include <kdl/utilities/svd_eigen_HH.hpp>
+
 #include <lwr_fri/typekit/Types.hpp>
 
 #include <string>
@@ -69,8 +72,10 @@ namespace MotionControl
 	bool setWeight(std::vector<float> Wx,std::vector<float> Wy,std::vector<float> Wz);
 	bool movePeriodic(KDL::Vector & amplitude_vector, float wx, float wy, float wz);
 	bool start_kinesthetic();
+	bool start_kinesthetic_calibration(KDL::Frame table_robot_transform);
 	bool resetWeight(int kernel_number);
 	void setCartesianStiffness(float linear_stiffness, float angular_stiffness,float linear_damping, float angular_damping);
+	void setCartesianStiffnessCalibration();
 	std::vector<float> Weight_x,Weight_y,Weight_z;
         void resetPosition();
 	void resetPositionActual();
@@ -82,7 +87,7 @@ namespace MotionControl
 	float x_dmp, y_dmp, z_dmp, theta_dmp, theta_eq;
 	KDL::Vector axis_eq;
 	float amp_x,amp_y, amp_z, omega_x, omega_y,omega_z;
-        bool periodic_active,kinestetic_active;
+        bool periodic_active,kinestetic_active,calibration_active;
 
       KDL::Frame m_traject_end, m_traject_begin;
       KDL::Frame m_position_desi_local;
@@ -90,6 +95,7 @@ namespace MotionControl
       KDL::Twist m_maximum_velocity, m_maximum_acceleration;
       geometry_msgs::Twist m_gm_maximum_velocity, m_gm_maximum_acceleration;
       geometry_msgs::Pose last_command;
+      KDL::Frame table_robot_frame,calib_frame_table;
 
       std::vector<KDL::VelocityProfile_Trap>      m_motion_profile;
       RTT::os::TimeService::ticks                     m_time_begin;
@@ -99,7 +105,7 @@ namespace MotionControl
       bool                                        m_is_moving,m_once;
       std::string								  move_started_event; 
       std::string								  move_finished_event;  
-
+      KDL::Jacobian current_jacobian;
     protected:
       /// Dataport containing the current measured end-effector
       /// frame, shared with MotionControl::CartesianSensor
@@ -117,6 +123,11 @@ namespace MotionControl
 
       RTT::OutputPort<std::string> event_port;
       RTT::OutputPort<lwr_fri::CartesianImpedance> desired_stiffness_outport;
+      RTT::InputPort <KDL::Jacobian > jacobian_inport;
+      RTT::OutputPort<std::vector<double> > jacobian_svd_outport;
+      RTT::InputPort<std::vector<double> > jacobian_svd_inport;
+      std::vector<double> jacobian_svd;
+      geometry_msgs::Pose current_pose;
 
   }; // class
 } //namespace
