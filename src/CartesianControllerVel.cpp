@@ -39,6 +39,7 @@ namespace MotionControl
 	    this->ports()->addPort("CartesianSensorPosition", _position_meas);
         this->ports()->addPort("CartesianDesiredVelocity", _velocity_desi);
         this->ports()->addPort("CartesianOutputVelocity", _velocity_out);
+	this->ports()->addPort("CartesianOutputVelocityMsgs", _velocity_out_msgs);
 
         this->addProperty("K", _controller_gain).doc("Proportional controller gain");
     }
@@ -53,7 +54,18 @@ namespace MotionControl
         return true;
     }
 
-    bool CartesianControllerVel::startHook() { return true; }
+    bool CartesianControllerVel::startHook()
+    {
+//        gm_starting_pose;
+      if(_position_meas.read(_position_meas_local)==NoData)
+      {
+	log(Error) << this->getName() << " cannot start if " <<
+	_position_meas.getName()<<" has no input data."<<endlog();
+	return false;
+      }
+      return true;
+      
+    }
 
     void CartesianControllerVel::updateHook()
     {
@@ -87,6 +99,8 @@ namespace MotionControl
         // feedback + feedforward
         _velocity_out_local = _velocity_desi_local + _velocity_feedback;
         _velocity_out.write(_velocity_out_local);
+	tf::twistKDLToMsg(_velocity_out_local,_velocity_out_local_msgs);
+	_velocity_out_msgs.write(_velocity_out_local_msgs);
     }
 
     void CartesianControllerVel::stopHook() {}

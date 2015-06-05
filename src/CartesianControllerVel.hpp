@@ -28,7 +28,8 @@
 #include <rtt/os/TimeService.hpp>
 #include <rtt/Property.hpp>
 #include <rtt/Port.hpp>
-
+#include <geometry_msgs/typekit/Types.h>
+#include <tf_conversions/tf_kdl.h>
 #include <kdl/kdl.hpp>
 #include <kdl/frames.hpp>
 
@@ -66,6 +67,7 @@ namespace MotionControl
         KDL::Frame                       _position_meas_local, _position_integrated;
         KDL::Twist                       _velocity_out_local, _velocity_desi_local, _velocity_feedback;
         std::vector<double>              _gain_local;
+	geometry_msgs::Twist _velocity_out_local_msgs;
 
 	    RTT::os::TimeService::ticks          _time_begin;
         bool                             _is_initialized;
@@ -82,6 +84,7 @@ namespace MotionControl
         /// base frame with end-effector reference point, shared with
         /// OCL::CartesianEffectorVel
         RTT::OutputPort< KDL::Twist > _velocity_out;
+	RTT::OutputPort< geometry_msgs::Twist > _velocity_out_msgs;
         /// Vector with the control gain value for each dof.
         std::vector<double>           _controller_gain;
 

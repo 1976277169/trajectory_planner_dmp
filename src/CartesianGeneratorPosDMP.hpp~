@@ -71,6 +71,7 @@ namespace MotionControl
         bool moveToDMP(geometry_msgs::Pose pose, double time, double t_scale, double k_number, double k_width);
 	bool setWeight(std::vector<float> Wx,std::vector<float> Wy,std::vector<float> Wz);
 	bool movePeriodic(KDL::Vector & amplitude_vector, float wx, float wy, float wz);
+	bool moveCircle(KDL::Vector& amplitude_vector, float wx, float wy, float wz, KDL::Frame robot_table_transform);
 	bool start_kinesthetic();
 	bool start_kinesthetic_calibration(KDL::Frame table_robot_transform);
 	bool resetWeight(int kernel_number);
@@ -87,7 +88,7 @@ namespace MotionControl
 	float x_dmp, y_dmp, z_dmp, theta_dmp, theta_eq;
 	KDL::Vector axis_eq;
 	float amp_x,amp_y, amp_z, omega_x, omega_y,omega_z;
-        bool periodic_active,kinestetic_active,calibration_active;
+        bool periodic_active,kinestetic_active,calibration_active,circle_active;
 
       KDL::Frame m_traject_end, m_traject_begin;
       KDL::Frame m_position_desi_local;
@@ -95,7 +96,8 @@ namespace MotionControl
       KDL::Twist m_maximum_velocity, m_maximum_acceleration;
       geometry_msgs::Twist m_gm_maximum_velocity, m_gm_maximum_acceleration;
       geometry_msgs::Pose last_command;
-      KDL::Frame table_robot_frame,calib_frame_table;
+      KDL::Frame table_robot_frame,calib_frame_table,robot_table_frame;
+      bool last_command_real;
 
       std::vector<KDL::VelocityProfile_Trap>      m_motion_profile;
       RTT::os::TimeService::ticks                     m_time_begin;
@@ -127,6 +129,7 @@ namespace MotionControl
       RTT::OutputPort<std::vector<double> > jacobian_svd_outport;
       RTT::InputPort<std::vector<double> > jacobian_svd_inport;
       std::vector<double> jacobian_svd;
+      geometry_msgs::Pose current_pose;
 
   }; // class
 } //namespace

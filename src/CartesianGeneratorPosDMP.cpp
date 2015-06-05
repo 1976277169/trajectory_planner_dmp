@@ -50,12 +50,14 @@ namespace MotionControl
 	  //Adding Properties
 	  this->addProperty("max_vel", m_gm_maximum_velocity).doc(
 			  "Maximum Velocity in Trajectory");
-	  this->addProperty("max_acc", m_gm_maximum_acceleration).doc(
-			  "Maximum Acceleration in Trajectory");
+	  this->addProperty("max_acc", m_gm_maximum_acceleration).doc("Maximum Acceleration in Trajectory");
+	  this->addProperty("last_command_real", last_command_real).doc("last_command_real");
 
 	  //Adding Commands
 	  this->addOperation("movePeriodic", &CartesianGeneratorPosDMP::movePeriodic, this,
 			  OwnThread) .doc("Start periodic motion");
+	  this->addOperation("moveCircle", &CartesianGeneratorPosDMP::moveCircle, this,
+			  OwnThread) .doc("Start circle motion");
 	  this->addOperation("moveToDMP", &CartesianGeneratorPosDMP::moveToDMP, this,
 			  OwnThread) .doc("Set the position setpoint") .arg("setpoint",
 			  "position setpoint for end effector") .arg("time",
@@ -118,8 +120,10 @@ namespace MotionControl
 	  amp_x = amp_y = amp_z = 0;
 	  omega_x = omega_y = omega_z = 0;
 	  periodic_active = false;
+	  circle_active = false;
 	  kinestetic_active = false;
 	  calibration_active = false;
+	  last_command_real = false;
 	  return true;
 
   }
@@ -129,13 +133,15 @@ namespace MotionControl
   // 	log(Info)<<"CartesianGeneratorPos::startHook()"<<endlog();
 	  m_is_moving = false;
 	  //initialize
-	  geometry_msgs::Pose gm_starting_pose; Frame starting_pose;
-	  geometry_msgs::Twist gm_starting_twist; Twist starting_twist;
-
-	  if(m_position_meas_port.read(gm_starting_pose)==NoData){
-		  log(Error) << this->getName() << " cannot start if " <<
-			  m_position_meas_port.getName()<<" has no input data."<<endlog();
-		  return false;
+	  //geometry_msgs::Pose gm_starting_pose;
+	  Frame starting_pose;
+	  geometry_msgs::Twist gm_starting_twist;
+	  Twist starting_twist;
+	  if(m_position_meas_port.read(gm_starting_pose)==NoData)
+	  {
+	    log(Error) << this->getName() << " cannot start if " <<
+	      m_position_meas_port.getName()<<" has no input data."<<endlog();
+	    return false;
 	  }
   //        log(Info) << "CartesianGeneratorPos::startHook()  Starting gm_pose is= "<<gm_starting_pose.position<<endlog();
 	  last_command = gm_starting_pose;
@@ -156,50 +162,50 @@ namespace MotionControl
 	  geometry_msgs::Pose gm_pos_dsr;
 	  geometry_msgs::Twist gm_vel_dsr;
 	  /// note: Jacobian is always in stiffness.TOOL frame of FRI. (like the force)
-	  if(jacobian_inport.read(current_jacobian)==NewData)
-	  {
-	    int jacobian_rows = current_jacobian.rows();
-	    int jacobian_cols = current_jacobian.columns();
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> received new Jacobian"<<current_jacobian.data<<" \nrows="<<
-// 	      jacobian_rows<<"  cols= "<<jacobian_cols<<endlog();
-	    
-	    MatrixXd U(jacobian_rows,jacobian_cols);
-	    MatrixXd V(jacobian_cols,jacobian_cols);
-	    int number_diagonal = jacobian_cols;
-	    if(jacobian_rows>jacobian_cols)
-	      number_diagonal = jacobian_rows;
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> number_diagonal= "<<number_diagonal<<endlog();
-	    VectorXd S(number_diagonal);
-	    
+// 	  if(jacobian_inport.read(current_jacobian)==NewData)
+// 	  {
+// 	    int jacobian_rows = current_jacobian.rows();
+// 	    int jacobian_cols = current_jacobian.columns();
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> received new Jacobian"<<current_jacobian.data<<" \nrows="<<
+// // 	      jacobian_rows<<"  cols= "<<jacobian_cols<<endlog();
+// 	    
+// 	    MatrixXd U(jacobian_rows,jacobian_cols);
+// 	    MatrixXd V(jacobian_cols,jacobian_cols);
+// 	    int number_diagonal = jacobian_cols;
+// 	    if(jacobian_rows>jacobian_cols)
+// 	      number_diagonal = jacobian_rows;
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> number_diagonal= "<<number_diagonal<<endlog();
+// 	    VectorXd S(number_diagonal);
+// 	    
+// // 	    for(int i=0; i<number_diagonal;i++)
+// // 	    {
+// // 	      log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> S at i="<<i<<" is="<<S(i)<<endlog();
+// // 	    }
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> 2"<<endlog();
+// 	    VectorXd temp = S;
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> 3"<<endlog();
+// 	    MatrixXd A= current_jacobian.data;
+// // 	    U = A;
+// // 	    V = A;
+// 	    
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> A="<<A<<endlog();
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> U="<<U<<endlog();
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> V="<<V<<endlog();
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> temp="<<temp<<endlog();
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> S="<<S<<endlog();
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> calculate SVD"<<endlog();
+// 	    int retval= KDL::svd_eigen_HH(A,U,S,V,temp);
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> S="<<S<<endlog();
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> calculate SVD DONE!  retval="<<retval<<endlog();
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> S="<<S<<endlog();
+// 	    jacobian_svd.clear();
 // 	    for(int i=0; i<number_diagonal;i++)
 // 	    {
-// 	      log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> S at i="<<i<<" is="<<S(i)<<endlog();
+// 	      jacobian_svd.push_back(S(i));
 // 	    }
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> 2"<<endlog();
-	    VectorXd temp = S;
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> 3"<<endlog();
-	    MatrixXd A= current_jacobian.data;
-// 	    U = A;
-// 	    V = A;
-	    
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> A="<<A<<endlog();
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> U="<<U<<endlog();
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> V="<<V<<endlog();
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> temp="<<temp<<endlog();
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> S="<<S<<endlog();
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> calculate SVD"<<endlog();
-	    int retval= KDL::svd_eigen_HH(A,U,S,V,temp);
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> S="<<S<<endlog();
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> calculate SVD DONE!  retval="<<retval<<endlog();
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> S="<<S<<endlog();
-	    jacobian_svd.clear();
-	    for(int i=0; i<number_diagonal;i++)
-	    {
-	      jacobian_svd.push_back(S(i));
-	    }
-	    jacobian_svd_outport.write(jacobian_svd);
-// 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> singular values="<<S(0)<<endlog();
-	  }
+// 	    jacobian_svd_outport.write(jacobian_svd);
+// // 	    log(Warning)<<"CartesianGeneratorPosDMP::updateHook >> singular values="<<S(0)<<endlog();
+// 	  }
 
 	  if (m_is_moving)
 	  {
@@ -309,43 +315,44 @@ namespace MotionControl
 	    m_position_meas_port.read(pose);
 	    goal_frame.p.data[0] += amp_x *sin(omega_x*m_time_passed);
 	    goal_frame.p.data[1] += amp_y *sin(omega_y*m_time_passed);
-  // 	  goal_frame.p.data[2] = pose.position.z;
 	    goal_frame.p.data[2] += amp_z *sin(omega_z*m_time_passed);
 	    m_position_desi_local = goal_frame;
-			  // position
-  // 			m_velocity_delta = Twist( Vector( m_motion_profile[0].Pos(m_time_passed),
-  // 							  m_motion_profile[1].Pos(m_time_passed),
-  // 							  m_motion_profile[2].Pos(m_time_passed)),
-  // 						  Vector( m_motion_profile[3].Pos(m_time_passed),
-  // 							  m_motion_profile[4].Pos(m_time_passed),
-  // 							  m_motion_profile[5].Pos(m_time_passed)));
-  // 			log(Info)<<"CartesianGeneratorPos::updateHook()  m_velocity_delta.rot= "
-  // 			<<m_velocity_delta.rot(0)<<" "<<m_velocity_delta.rot(1)<<" "<<m_velocity_delta.rot(2)<<" "<<endlog();
-  // 			log(Info)<<"CartesianGeneratorPos::updateHook()  m_velocity_delta.vel= "
-  // 			<<m_velocity_delta.vel(0)<<" "<<m_velocity_delta.vel(1)<<" "<<m_velocity_delta.vel(2)<<" "<<endlog();
 
-  // 			m_position_desi_local = Frame( m_traject_begin.M *
-  // 						       Rot( m_traject_begin.M.Inverse(m_velocity_delta.rot)),
-  // 						       m_traject_begin.p + m_velocity_delta.vel);
-
-			  // velocity
-  // 			for (unsigned int i = 0; i < 6; i++)
-  // 				m_velocity_desi_local(i) = m_motion_profile[i].Vel(m_time_passed);
-
-		  
-  // 		log(Info) << "CartesianGeneratorPos::updateHook()  desired pose is= "
-  // 		<<m_position_desi_local.p(0)<<" "<<m_position_desi_local.p(1)<<" "<<m_position_desi_local.p(2)<<endlog();
-
-		  // convert to geometry msgs and send.
 		  PoseKDLToMsg(m_position_desi_local, gm_pos_dsr);
-  // 		log(Info) << "CartesianGeneratorPos::updateHook()  desired gm_pose is= "<<gm_pos_dsr.position<<endlog();
-  // 		TwistKDLToMsg(m_velocity_desi_local, gm_vel_dsr);
 		  last_command = gm_pos_dsr;
 		  last_command_outport.write(last_command);
 		  m_position_desi_port.write(gm_pos_dsr);
-  // 		m_velocity_desi_port.write(gm_vel_dsr);
+	  }
+	  else if(circle_active)
+	  {
+// 	    log(Warning)<<" circle_active"<<endlog();
+	    /// get the current position
+	    Frame current_pose;
+	    geometry_msgs::Pose gm_pose_msr;
+	    m_position_meas_port.read(gm_pose_msr);
+	    PoseMsgToKDL(gm_pose_msr, current_pose);
 	    ///
-	    
+	    m_time_passed = os::TimeService::Instance()->secondsSince(m_time_begin);
+	    Frame goal_frame = m_traject_begin;
+	    geometry_msgs::Pose pose;
+	    m_position_meas_port.read(pose);
+	    // calculate displacement in table frame
+	    double x_table = amp_x *(1-cos(omega_x*m_time_passed));
+	    double y_table = amp_y *sin(omega_y*m_time_passed);
+	    KDL::Vector circle_displacement_table;
+	    circle_displacement_table.data[0] = x_table;
+	    circle_displacement_table.data[1] = y_table;
+	    circle_displacement_table.data[2] = 0;
+	    KDL::Vector circle_displacement_robot = robot_table_frame.M * circle_displacement_table;
+	    goal_frame.p.data[0] += circle_displacement_robot[0];// amp_x *(1-cos(omega_x*m_time_passed));
+	    goal_frame.p.data[1] += circle_displacement_robot[1];//amp_y *sin(omega_y*m_time_passed);
+	    goal_frame.p.data[2] += circle_displacement_robot[2];//amp_z *sin(omega_z*m_time_passed);
+	    m_position_desi_local = goal_frame;
+
+		  PoseKDLToMsg(m_position_desi_local, gm_pos_dsr);
+		  last_command = gm_pos_dsr;
+		  last_command_outport.write(last_command);
+		  m_position_desi_port.write(gm_pos_dsr);
 	  }
 	  else if(kinestetic_active)
 	  {
@@ -374,6 +381,15 @@ namespace MotionControl
 	    /// send the new pose_robot as a command to robot    
 	    m_position_desi_port.write(pose_robot);
 	    
+	  }
+	  else // not movement
+	  {
+	    if(m_position_meas_port.read(gm_starting_pose)!=NoData)
+	    {
+	      last_command = gm_starting_pose;
+	      last_command_outport.write(last_command);
+	      m_position_desi_port.write(gm_starting_pose);
+	    }
 	  }
   }
 
@@ -427,11 +443,20 @@ namespace MotionControl
 	  m_traject_end=pose;
 
 	  // get current position
-	  /// old way : set desired as actual
+	  
 	  m_position_meas_port.read(gm_pose_msr);
-	  //PoseMsgToKDL(gm_pose_msr, m_traject_begin);
-	  /// new way : keep the last desired
-	  PoseMsgToKDL(last_command, m_traject_begin);
+	  if(last_command_real)
+	  {  
+	    /// old way : set desired as actual
+	    log(Warning)<<"CartesianGeneratorPos::moveToDMP >> using actual pose as the start pose"<<endlog();
+	    PoseMsgToKDL(gm_pose_msr, m_traject_begin);
+	  }
+	  else
+	  {
+	    /// new way : keep the last desired
+	    log(Warning)<<"CartesianGeneratorPos::moveToDMP >> using last desired pose as the start pose"<<endlog();
+	    PoseMsgToKDL(last_command, m_traject_begin);
+	  }
 	  x_dmp = m_traject_begin.p.x();
 	  y_dmp = m_traject_begin.p.y();
 	  z_dmp = m_traject_begin.p.z();
@@ -491,6 +516,7 @@ namespace MotionControl
     omega_y = wy;
     omega_z = wz;
     periodic_active = true;
+    circle_active = false;
     m_is_moving = false;
     ///
     log(Warning)<<"CartesianGeneratorPos::movePeriodic >> started ..."<<endlog();
@@ -505,38 +531,60 @@ namespace MotionControl
   // 	log(Warning)<<"Moving to pose  x= "<<gm_pose.position.x<<" y="<<gm_pose.position.y<<" z="<<gm_pose.position.z<<endlog();
 	  m_max_duration = 0;
 
-  // 	m_traject_end=pose;
 
 	  // get current position
 	  geometry_msgs::Pose gm_pose_msr;
 	  m_position_meas_port.read(gm_pose_msr);
 	  PoseMsgToKDL(gm_pose_msr, m_traject_begin);
-  // 	log(Info)<<"CartesianGeneratorPos::moveTo()  m_traject_begin= "
-  // 	<<m_traject_begin.p(0)<<" "<<m_traject_begin.p(1)<<" "<<m_traject_begin.p(2)<<endlog();
-  // 	m_velocity_begin_end = diff(m_traject_begin, m_traject_end);
 
-	  // Set motion profiles
-  // 	for (unsigned int i = 0; i < 6; i++) {
-  // 		m_motion_profile[i].SetProfileDuration(0, m_velocity_begin_end(i), time);
-  // 		m_max_duration = max(m_max_duration, m_motion_profile[i].Duration());
-  // // 		log(Info)<<"CartesianGeneratorPos::moveTo()  m_max_duration"<<m_max_duration<<endlog();
-  // 	}
-
-	  // Rescale trajectories to maximal duration
-  // 	for (unsigned int i = 0; i < 6; i++)
-  // 		m_motion_profile[i].SetProfileDuration(0, m_velocity_begin_end(i),
-  // 				m_max_duration);
-  // 
 	  m_time_begin = os::TimeService::Instance()->getTicks();
 	  m_time_passed = 0;
 
 	  periodic_active = true;
-	  // send move_started_event )
-  // 	event_port.write(move_started_event);
 	  log(Warning)<<"Periodic Move command is sent"<<endlog();
-
 	  return true;
+  }
+  bool CartesianGeneratorPosDMP::moveCircle(KDL::Vector & amplitude_vector, float wx, float wy, float wz,KDL::Frame robot_table_transform)
+  {
+    
+    amp_x = amplitude_vector.data[0];
+    amp_y = amplitude_vector.data[1];
+    amp_z = amplitude_vector.data[2];
+    amp_x = -0.02;
+    amp_y = -0.07;
+    amp_z = 0.0;
+    omega_x = wx;
+    omega_y = wy;
+    omega_z = wz;
+    periodic_active = false;
+    circle_active = true;
+    m_is_moving = false;
+    robot_table_frame = robot_table_transform;
     ///
+    log(Warning)<<"CartesianGeneratorPos::moveCircle >> started ..."<<endlog();
+	  Frame pose;
+	  
+  // 	PoseMsgToKDL(gm_pose, pose);
+
+	  if(!this->isRunning()){
+		  log(Error)<<this->getName()<<" is not running yet."<<endlog();
+		  return false;
+	  }
+  // 	log(Warning)<<"Moving to pose  x= "<<gm_pose.position.x<<" y="<<gm_pose.position.y<<" z="<<gm_pose.position.z<<endlog();
+	  m_max_duration = 0;
+
+
+	  // get current position
+	  geometry_msgs::Pose gm_pose_msr;
+	  m_position_meas_port.read(gm_pose_msr);
+	  PoseMsgToKDL(gm_pose_msr, m_traject_begin);
+
+	  m_time_begin = os::TimeService::Instance()->getTicks();
+	  m_time_passed = 0;
+
+	   circle_active = true;
+	  log(Warning)<<"Circle Move command is sent"<<endlog();
+	  return true;
   }
   void CartesianGeneratorPosDMP::resetPosition()
   {
@@ -552,6 +600,7 @@ namespace MotionControl
 
 	  m_is_moving = false;
 	  periodic_active = false;
+	  circle_active = false;
 	  kinestetic_active = false;
 	  calibration_active = false;
   }
@@ -570,6 +619,7 @@ namespace MotionControl
 
 	  m_is_moving = false;
 	  periodic_active = false;
+	  circle_active = false;
 	  kinestetic_active = false;
 	  calibration_active = false;
   }
@@ -628,6 +678,7 @@ namespace MotionControl
 		  return false;
 	  }
 	  periodic_active = false;
+	  circle_active = false;
 	  kinestetic_active = true;
 	  m_is_moving = false;
 	  calibration_active = false;
@@ -644,6 +695,7 @@ namespace MotionControl
 		  return false;
 	  }
 	  periodic_active = false;
+	  circle_active = false;
 	  kinestetic_active = false;
 	  m_is_moving = false;
 	  calibration_active = true;
