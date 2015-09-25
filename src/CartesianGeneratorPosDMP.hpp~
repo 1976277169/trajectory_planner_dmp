@@ -77,6 +77,7 @@ namespace MotionControl
 	bool resetWeight(int kernel_number);
 	void setCartesianStiffness(float linear_stiffness, float angular_stiffness,float linear_damping, float angular_damping);
 	void setCartesianStiffnessCalibration();
+	bool follow_trajectory_from_file(const std::string filename);
 	std::vector<float> Weight_x,Weight_y,Weight_z;
         void resetPosition();
 	void resetPositionActual();
@@ -88,7 +89,11 @@ namespace MotionControl
 	float x_dmp, y_dmp, z_dmp, theta_dmp, theta_eq;
 	KDL::Vector axis_eq;
 	float amp_x,amp_y, amp_z, omega_x, omega_y,omega_z;
-        bool periodic_active,kinestetic_active,calibration_active,circle_active;
+        bool periodic_active,kinestetic_active,calibration_active,circle_active,trajectory_from_file;
+	std::vector<KDL::Frame> whole_trajectory;
+	std::vector<std::vector<float> > whole_file;
+	double x0,y0,z0,a0,b0,c0;
+	double b_begin,b_begin,c_begin,x_begin,y_begin,z_begin;
 
       KDL::Frame m_traject_end, m_traject_begin;
       KDL::Frame m_position_desi_local;
@@ -98,6 +103,7 @@ namespace MotionControl
       geometry_msgs::Pose last_command;
       KDL::Frame table_robot_frame,calib_frame_table,robot_table_frame;
       bool last_command_real;
+      geometry_msgs::Pose gm_starting_pose;
 
       std::vector<KDL::VelocityProfile_Trap>      m_motion_profile;
       RTT::os::TimeService::ticks                     m_time_begin;

@@ -73,6 +73,7 @@ namespace MotionControl
 	  this->addOperation("startKinesthetic", &CartesianGeneratorPosDMP::start_kinesthetic,this, OwnThread).doc("Start kinesthetic guidance. mirror the actual pose in desired pose");
 	  this->addOperation("setCartesianStiffnessCalibration", &CartesianGeneratorPosDMP::setCartesianStiffnessCalibration,this, OwnThread).doc("Set the stiffness for calibration");
 	  this->addOperation("startKinestheticCalibration", &CartesianGeneratorPosDMP::start_kinesthetic_calibration,this, OwnThread).doc("Start kinesthetic for calibration, only in XY plane");
+	  this->addOperation("follow_trajectory_from_file", &CartesianGeneratorPosDMP::follow_trajectory_from_file,this, OwnThread).doc("");
   }
 
   CartesianGeneratorPosDMP::~CartesianGeneratorPosDMP() { }
@@ -124,6 +125,7 @@ namespace MotionControl
 	  kinestetic_active = false;
 	  calibration_active = false;
 	  last_command_real = false;
+	  trajectory_from_file = false;
 	  return true;
 
   }
@@ -301,6 +303,56 @@ namespace MotionControl
 		      dmp[3].calculate_one_step_dmp(m_time_passed);
 		  //m_velocity_desi_port.write(gm_vel_dsr);
 	  }
+	  else if(trajectory_from_file)
+	  {
+	    //m_position_desi_local.M = m_traject_begin.M;
+	    //log(Error)<<"running the trajectory from file ...."<<endlog();
+	    double x1,y1,z1,a1,b1,c1;
+	    std::vector <float> current_row;
+	    if(whole_file.size()>0)
+	    {
+	      current_row= whole_file.front();
+	      x1 = x_begin + current_row.at(0) - x0;
+	      y1 = y_begin + current_row.at(1) - y0;
+	      z1 = z_begin + current_row.at(2) - z0;
+// 	      y1 = current_row.at(1);
+// 	      z1 = current_row.at(2);
+// 	      log(Error)<< "current_row angles= " << current_row.at(3)<<" "<< current_row.at(4)<<" "<< current_row.at(5)<<endlog();
+// 	      log(Error)<< "first row angles= " << a0 << " "<< b0 << " "<< c0 << endlog();
+	      
+	      a1 = a_begin + M_PI* (current_row.at(3)-a0)/180 ;
+	      b1 = b_begin + M_PI* (current_row.at(4)-b0)/180 ;
+	      c1 = c_begin + M_PI* (current_row.at(5)-c0)/180 ;
+// 	      log(Error)<< "next command angles= " << a1*180/M_PI << " "<< b1*180/M_PI << " "<< c1*180/M_PI << endlog();
+	      Rotation a_rotation = Rotation::EulerZYX(a1,b1,c1);
+// 	      a_rotation.EulerZYX(a1,b1,c1);
+// 	      a_rotation.GetEulerZYX(a1,b1,c1);
+// 	      log(Error)<<"final command angles= " << a1*180/M_PI << " "<< b1*180/M_PI << " "<< c1*180/M_PI << endlog();
+	      m_position_desi_local.M = a_rotation;
+	      m_position_desi_local.p.data[0] = x1;
+	      m_position_desi_local.p.data[1] = y1;
+	      m_position_desi_local.p.data[2] = z1;
+	      whole_file.erase(whole_file.begin());
+	    }
+	    
+// 	    if(whole_trajectory.size()>0)
+// 	    {
+// 	      m_position_desi_local = whole_trajectory.front()* m_traject_begin;
+// 	      whole_trajectory.erase(whole_trajectory.begin());
+// 	    }
+	    else
+	    {
+	      //log(Error)<<".";
+// 	      trajectory_from_file=false;
+	    }
+	      
+	    PoseKDLToMsg(m_position_desi_local, gm_pos_dsr);
+	    last_command = gm_pos_dsr;
+	    last_command_outport.write(last_command);
+	    m_position_desi_port.write(gm_pos_dsr);
+	    
+
+	  }
 	  else if(periodic_active)
 	  {
 	    /// get the current position
@@ -381,6 +433,15 @@ namespace MotionControl
 	    /// send the new pose_robot as a command to robot    
 	    m_position_desi_port.write(pose_robot);
 	    
+	  }
+	  else // not movement
+	  {
+	    if(m_position_meas_port.read(gm_starting_pose)!=NoData)
+	    {
+	      last_command = gm_starting_pose;
+	      last_command_outport.write(last_command);
+	      m_position_desi_port.write(gm_starting_pose);
+	    }
 	  }
   }
 
@@ -507,6 +568,7 @@ namespace MotionControl
     omega_y = wy;
     omega_z = wz;
     periodic_active = true;
+    trajectory_from_file = false;
     circle_active = false;
     m_is_moving = false;
     ///
@@ -551,6 +613,7 @@ namespace MotionControl
     circle_active = true;
     m_is_moving = false;
     robot_table_frame = robot_table_transform;
+    trajectory_from_file = false;
     ///
     log(Warning)<<"CartesianGeneratorPos::moveCircle >> started ..."<<endlog();
 	  Frame pose;
@@ -594,6 +657,7 @@ namespace MotionControl
 	  circle_active = false;
 	  kinestetic_active = false;
 	  calibration_active = false;
+	  trajectory_from_file = false;
   }
   void CartesianGeneratorPosDMP::resetPositionActual()
   {
@@ -613,6 +677,7 @@ namespace MotionControl
 	  circle_active = false;
 	  kinestetic_active = false;
 	  calibration_active = false;
+	  trajectory_from_file = false;
   }
   void CartesianGeneratorPosDMP::setCartesianStiffness(float linear_stiffness, float angular_stiffness,float linear_damping, float angular_damping)
   {
@@ -673,6 +738,99 @@ namespace MotionControl
 	  kinestetic_active = true;
 	  m_is_moving = false;
 	  calibration_active = false;
+	  trajectory_from_file = false;
+
+	  return true;
+  }
+  bool CartesianGeneratorPosDMP::follow_trajectory_from_file(const std::string filename)
+  {
+    log(Warning)<<"CartesianGeneratorPos::follow_trajectory_from_file >> start reading from file "<<endlog();
+
+	  if(!this->isRunning()){
+		  log(Error)<<this->getName()<<" is not running yet."<<endlog();
+		  return false;
+	  }
+	  /// get initial pose of robot
+	  geometry_msgs::Pose gm_pose_msr;
+	  m_position_meas_port.read(gm_pose_msr);
+	  PoseMsgToKDL(gm_pose_msr, m_traject_begin);
+	  log(Error)<<"start position in robot frame is=\n"<<gm_pose_msr<<endlog();
+	  m_traject_begin.M.GetEulerZYX(a_begin,b_begin,c_begin);
+	  x_begin = m_traject_begin.p.data[0];
+	  y_begin = m_traject_begin.p.data[1];
+	  z_begin = m_traject_begin.p.data[2];
+	  log(Error)<<"begins at\t\t xyz=\t"<<x_begin<<"\t"<<y_begin<<"\t"<<z_begin<<"\t abc=\t"<<180*a_begin/M_PI<<"\t"<<180*b_begin/M_PI<<"\t"<<180*c_begin/M_PI<<endlog();
+	  //PoseMsgToKDL(last_command, m_traject_begin);
+	  
+	  
+	  /// read the whole trajectory from file and store in a vector
+	  fstream fileIn1(filename.c_str());
+	  string tempStr;
+	  
+// 	  int i,j;
+// 	  int n=0;
+// 	  float pos[36000][6];
+      
+// 	  float startAlpha;
+// 	  float startBeta;
+// // 	  float startGamma;   
+// 	  float alpha;
+// 	  float beta;
+// 	  float gamma;
+	  
+// 	  float rotMatrix[3][3];
+	  float x,y,z,a,b,c;
+	  geometry_msgs::Pose temp_pose_msgs;
+	  
+	  std::vector<float> one_row;
+	  while (!fileIn1.eof())
+	  {
+	      getline(fileIn1,tempStr);
+	      sscanf(tempStr.c_str(),"%f %f %f %f %f %f", &x,&y, &z,&a, &b,&c);
+	      one_row.push_back(x);
+	      one_row.push_back(y);
+	      one_row.push_back(z);
+	      one_row.push_back(a);
+	      one_row.push_back(b);
+	      one_row.push_back(c);
+	      
+	      whole_file.push_back(one_row);
+	      one_row.clear();
+
+	  }
+	  log(Error)<<"the file has "<<whole_file.size()<<" rows and "<<whole_file.at(0).size()<<" columns."<<endlog();
+	  fileIn1.close();
+	  x0 = whole_file.at(0).at(0);
+	  y0 = whole_file.at(0).at(1);
+	  z0 = whole_file.at(0).at(2);
+	  a0 = whole_file.at(0).at(3);
+	  b0 = whole_file.at(0).at(4);
+	  c0 = whole_file.at(0).at(5);
+	  Frame temp_frame_kdl;
+	  whole_trajectory.clear();
+	  for(int i=0; i<whole_file.size(); i++)
+	  {
+	    x = whole_file.at(i).at(0);
+	    y = whole_file.at(i).at(1);
+	    z = whole_file.at(i).at(2);
+	    a = whole_file.at(i).at(3);
+	    b = whole_file.at(i).at(4);
+	    c = whole_file.at(i).at(5);
+	    Rotation rotation_temp = Rotation::EulerZYX(M_PI*(a-a0)/180,M_PI*(b-b0)/180,M_PI*(c-c0)/180);
+   	    temp_frame_kdl.p.data[0] = x-x0;
+	    temp_frame_kdl.p.data[1] = y-y0;
+	    temp_frame_kdl.p.data[2] = z-z0;
+	    temp_frame_kdl.M = rotation_temp;
+	    whole_trajectory.push_back(temp_frame_kdl);
+	  }
+	  
+	  ///
+	  trajectory_from_file = true;
+	  periodic_active = false;
+	  circle_active = false;
+	  kinestetic_active = false;
+	  m_is_moving = false;
+	  calibration_active = false;
 
 	  return true;
   }
@@ -686,6 +844,7 @@ namespace MotionControl
 		  return false;
 	  }
 	  periodic_active = false;
+	  trajectory_from_file = false;
 	  circle_active = false;
 	  kinestetic_active = false;
 	  m_is_moving = false;
