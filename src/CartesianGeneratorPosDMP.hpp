@@ -78,6 +78,7 @@ namespace MotionControl
 	void setCartesianStiffness(float linear_stiffness, float angular_stiffness,float linear_damping, float angular_damping);
 	void setCartesianStiffnessCalibration();
 	bool follow_trajectory_from_file(const std::string filename);
+	bool test_dmp_pose(float sx, float sy, float sz);
 	std::vector<float> Weight_x,Weight_y,Weight_z;
         void resetPosition();
 	void resetPositionActual();
@@ -114,6 +115,7 @@ namespace MotionControl
       std::string								  move_started_event; 
       std::string								  move_finished_event;  
       KDL::Jacobian current_jacobian;
+      bool testing_dmp;
     protected:
       /// Dataport containing the current measured end-effector
       /// frame, shared with MotionControl::CartesianSensor

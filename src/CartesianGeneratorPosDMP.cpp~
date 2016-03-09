@@ -74,6 +74,7 @@ namespace MotionControl
 	  this->addOperation("setCartesianStiffnessCalibration", &CartesianGeneratorPosDMP::setCartesianStiffnessCalibration,this, OwnThread).doc("Set the stiffness for calibration");
 	  this->addOperation("startKinestheticCalibration", &CartesianGeneratorPosDMP::start_kinesthetic_calibration,this, OwnThread).doc("Start kinesthetic for calibration, only in XY plane");
 	  this->addOperation("follow_trajectory_from_file", &CartesianGeneratorPosDMP::follow_trajectory_from_file,this, OwnThread).doc("");
+	  this->addOperation("test_dmp_pose", &CartesianGeneratorPosDMP::test_dmp_pose,this, OwnThread).doc("");
   }
 
   CartesianGeneratorPosDMP::~CartesianGeneratorPosDMP() { }
@@ -126,6 +127,7 @@ namespace MotionControl
 	  calibration_active = false;
 	  last_command_real = false;
 	  trajectory_from_file = false;
+	  testing_dmp = false;
 	  return true;
 
   }
@@ -150,8 +152,7 @@ namespace MotionControl
 	  last_command_outport.write(last_command);
 	  m_position_desi_port.write(gm_starting_pose);
 	  PoseMsgToKDL(gm_starting_pose, starting_pose);
-  // 	log(Info) << "CartesianGeneratorPos::startHook()  Starting pose is= "
-  // 	<<starting_pose.p(0)<<" "<<starting_pose.p(1)<<" "<<starting_pose.p(2)<<endlog();
+	  
 	  starting_twist = Twist::Zero();
 	  TwistKDLToMsg(starting_twist, gm_starting_twist);
 	  m_velocity_desi_port.write(gm_starting_twist);
@@ -219,12 +220,12 @@ namespace MotionControl
 		  y_dmp=dmp[1].get_y();
 		  z_dmp=dmp[2].get_y();
 		  theta_dmp = dmp[3].get_y(); /// in Radians
-// 		  log(Warning)<<"t= "<<m_time_passed<<" x_dmp= "<<x_dmp<<" y_dmp= "<<y_dmp<<" z_dmp= "<<z_dmp<<" "<<theta_dmp<<endlog();
+// 		  log(Error)<<"t= "<<m_time_passed<<" x_dmp= "<<x_dmp<<" y_dmp= "<<y_dmp<<" z_dmp= "<<z_dmp<<" "<<theta_dmp<<endlog();
 		  /// update current pose
 		  if(m_position_meas_port.read(current_pose)==NoData)
 		  {
-		    log(Error) << this->getName() << " cannot move if " <<m_position_meas_port.getName()<<" has no input data."<<endlog();
-		    m_is_moving = false;
+// 		    log(Error) << this->getName() << " cannot move if " <<m_position_meas_port.getName()<<" has no input data."<<endlog();
+// 		    m_is_moving = false;
 		  }
 		  else
 		  {
@@ -476,7 +477,8 @@ namespace MotionControl
   /// implements a moveTo function using DMP
   bool CartesianGeneratorPosDMP::moveToDMP(geometry_msgs::Pose gm_pose, double time, double t_scale, double k_number, double k_width)
   {
-	  log(Warning)<<"CartesianGeneratorPosDMP::moveToDMP() >> started ..."<<endlog();
+	  log(Error)<<"CartesianGeneratorPosDMP::moveToDMP() >> started ..."<<endlog();
+	  testing_dmp = false;
 	  time_scale = t_scale;
 	  kernel_number = k_number;
 	  kernel_width = k_width;
@@ -488,7 +490,7 @@ namespace MotionControl
 		  log(Error)<<this->getName()<<" is not running yet."<<endlog();
 		  return false;
 	  }
-	  log(Warning)<<"Moving to pose  x= "<<gm_pose.position.x<<" y="<<gm_pose.position.y<<" z="<<gm_pose.position.z<<endlog();
+	  log(Error)<<"Moving to pose  x= "<<gm_pose.position.x<<" y="<<gm_pose.position.y<<" z="<<gm_pose.position.z<<endlog();
 	  m_max_duration = 0;
 	  m_duration = time;
 
@@ -497,27 +499,33 @@ namespace MotionControl
 	  // get current position
 	  
 	  m_position_meas_port.read(gm_pose_msr);
-	  if(last_command_real)
+	  if(testing_dmp)
+	  {
+	    log(Error)<<"1"<<endlog();
+	  }
+	  else if(last_command_real)
 	  {  
 	    /// old way : set desired as actual
-	    log(Warning)<<"CartesianGeneratorPos::moveToDMP >> using actual pose as the start pose"<<endlog();
+	    log(Error)<<"CartesianGeneratorPos::moveToDMP >> using actual pose as the start pose"<<endlog();
 	    PoseMsgToKDL(gm_pose_msr, m_traject_begin);
 	  }
 	  else
 	  {
 	    /// new way : keep the last desired
-	    log(Warning)<<"CartesianGeneratorPos::moveToDMP >> using last desired pose as the start pose"<<endlog();
+	    log(Error)<<"CartesianGeneratorPos::moveToDMP >> using last desired pose as the start pose"<<endlog();
+	    log(Error)<<"last command=\t"<<last_command.position.x<<" "<<last_command.position.y<<" "<<last_command.position.z<<endlog();
 	    PoseMsgToKDL(last_command, m_traject_begin);
 	  }
+	  log(Error)<<"m_traject_begin=\t"<< m_traject_begin.p.x()<<" "<< m_traject_begin.p.y()<<" "<< m_traject_begin.p.z()<<" "<<endlog();
 	  x_dmp = m_traject_begin.p.x();
 	  y_dmp = m_traject_begin.p.y();
 	  z_dmp = m_traject_begin.p.z();
 	  theta_dmp =0;
-	  //log(Warning)<<"Initializing the dmp outputs to: "<<x_dmp<<" "<<y_dmp<<" "<<z_dmp<<" "<<theta_dmp<<endlog();
+	  log(Error)<<"Initializing the dmp outputs to: "<<x_dmp<<" "<<y_dmp<<" "<<z_dmp<<" "<<theta_dmp<<endlog();
 	  dmp[0].init_dmp(m_traject_begin.p.x(),m_traject_end.p.x(), time, step_time, time_scale, kernel_number, kernel_width);
 	  dmp[1].init_dmp(m_traject_begin.p.y(),m_traject_end.p.y(), time, step_time, time_scale, kernel_number, kernel_width);
 	  dmp[2].init_dmp(m_traject_begin.p.z(),m_traject_end.p.z(), time, step_time, time_scale, kernel_number, kernel_width);
-	  //log(Warning)<<"CartesianGeneratorPosDMP::moveToDMP() >> before applying the weights"<<endlog();
+	  log(Warning)<<"CartesianGeneratorPosDMP::moveToDMP() >> before applying the weights"<<endlog();
 	  /// apply weights to DMPs
 	  for (int i=0; i<kernel_number; i++)
 	  {
@@ -525,7 +533,7 @@ namespace MotionControl
 	    dmp[1].set_w(i, Weight_y.at(i));
 	    dmp[2].set_w(i, Weight_z.at(i));
 	  }
-	  //log(Warning)<<"CartesianGeneratorPosDMP::moveToDMP() >> before resetting the weights"<<endlog();
+	  log(Warning)<<"CartesianGeneratorPosDMP::moveToDMP() >> before resetting the weights"<<endlog();
 	  /// reset weights to zero, for next time! (maybe not the best solution, esp if kernel_number is not constant)
 	  std::vector<float> zero_weights(kernel_number,0);
 	  Weight_x = zero_weights;
@@ -548,7 +556,7 @@ namespace MotionControl
 
 	  m_time_begin = os::TimeService::Instance()->getTicks();
 	  m_time_passed = 0;
-	  //log(Warning)<<"CartesianGeneratorPosDMP::moveToDMP() >> before moving"<<endlog();
+	  log(Warning)<<"CartesianGeneratorPosDMP::moveToDMP() >> before moving"<<endlog();
 
 	  m_is_moving = true;
 	  // send move_started_event )
@@ -754,12 +762,12 @@ namespace MotionControl
 	  geometry_msgs::Pose gm_pose_msr;
 	  m_position_meas_port.read(gm_pose_msr);
 	  PoseMsgToKDL(gm_pose_msr, m_traject_begin);
-	  log(Error)<<"start position in robot frame is=\n"<<gm_pose_msr<<endlog();
+// 	  log(Error)<<"start position in robot frame is=\n"<<gm_pose_msr<<endlog();
 	  m_traject_begin.M.GetEulerZYX(a_begin,b_begin,c_begin);
 	  x_begin = m_traject_begin.p.data[0];
 	  y_begin = m_traject_begin.p.data[1];
 	  z_begin = m_traject_begin.p.data[2];
-	  log(Error)<<"begins at\t\t xyz=\t"<<x_begin<<"\t"<<y_begin<<"\t"<<z_begin<<"\t abc=\t"<<180*a_begin/M_PI<<"\t"<<180*b_begin/M_PI<<"\t"<<180*c_begin/M_PI<<endlog();
+// 	  log(Error)<<"begins at\t\t xyz=\t"<<x_begin<<"\t"<<y_begin<<"\t"<<z_begin<<"\t abc=\t"<<180*a_begin/M_PI<<"\t"<<180*b_begin/M_PI<<"\t"<<180*c_begin/M_PI<<endlog();
 	  //PoseMsgToKDL(last_command, m_traject_begin);
 	  
 	  
@@ -798,7 +806,7 @@ namespace MotionControl
 	      one_row.clear();
 
 	  }
-	  log(Error)<<"the file has "<<whole_file.size()<<" rows and "<<whole_file.at(0).size()<<" columns."<<endlog();
+// 	  log(Error)<<"the file has "<<whole_file.size()<<" rows and "<<whole_file.at(0).size()<<" columns."<<endlog();
 	  fileIn1.close();
 	  x0 = whole_file.at(0).at(0);
 	  y0 = whole_file.at(0).at(1);
@@ -858,4 +866,37 @@ namespace MotionControl
 
 	  return true;
   }
+  bool CartesianGeneratorPosDMP::test_dmp_pose(float sx, float sy, float sz)
+  {
+//     log(Error)<<"CartesianGeneratorPosDMP::test_dmp_pose >> start test ..."<<endlog();
+    testing_dmp = true;
+    int kernel_number = 50;
+    std::vector<float> weight_zero(kernel_number,0);
+    std::vector<float> weight_sine(kernel_number,0);
+    for (int i=0;i<kernel_number;i++)
+    {
+      weight_sine.at(i) = 0.04*sin(M_PI*i/(kernel_number-1));     /// sine  weights 
+    }
+    // traj parameters
+    double traj_time = 4;
+    double traj_time_scale = 1;
+    double traj_kernel_width = 0.01;
+    double traj_kernel_num = 50;
+    setWeight(weight_zero,weight_zero,weight_sine);
+    m_traject_begin.p[0] = sx;
+    m_traject_begin.p[1] = sy;
+    m_traject_begin.p[2] = sz;
+    m_traject_begin.M = Rotation::EulerZYX(70*M_PI/180,80*M_PI/180,-40*M_PI/180);
+    Frame trajectory_goal = m_traject_begin;
+    trajectory_goal.M = Rotation::EulerZYX(0*M_PI/180,0*M_PI/180,0*M_PI/180);
+    trajectory_goal.p[0] = 0;
+    trajectory_goal.p[1] = 0;
+    trajectory_goal.p[2] = 0;
+    geometry_msgs::Pose traj_goal_msgs;
+    tf:poseKDLToMsg(trajectory_goal,traj_goal_msgs);
+//     log(Error)<<"before moveToDMP..."<<endlog();
+    moveToDMP(traj_goal_msgs,traj_time,traj_time_scale,traj_kernel_num,traj_kernel_width);
+//     log(Error)<<"now the traj should start..."<<endlog();
+  }
+
 } //namespace
